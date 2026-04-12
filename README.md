@@ -2,6 +2,73 @@
 
 GitHub Release Notifier - це API сервіс, який дозволяє користувачам підписатися на email-сповіщення про нові релізи GitHub-репозиторіїв.
 
+## Live Demo
+
+**Production URL:** https://release-notifier-production-04c1.up.railway.app/
+
+**Доступні endpoints:**
+- `GET /health` - перевірка стану сервісу
+- `GET /docs` - Swagger документація
+- `POST /api/subscribe` - підписатися на релізи
+- `POST /api/unsubscribe` - відписатися від релізів
+- `GET /api/subscriptions` - отримати список підписок
+
+**Приклад тестування:**
+```bash
+# Перевірити здоров'я сервісу
+curl https://release-notifier-production-04c1.up.railway.app/health
+
+# Підписатися на релізи
+curl -X POST https://release-notifier-production-04c1.up.railway.app/api/subscribe \
+  -H "Content-Type: application/json" \
+  -d '{"email":"your@email.com","repository":"golang/go"}'
+
+# Отримати підписки
+curl "https://release-notifier-production-04c1.up.railway.app/api/subscriptions?email=your@email.com"
+
+# Переглянути Swagger документацію
+# Відкрити: https://release-notifier-production-04c1.up.railway.app/docs
+```
+
+---
+
+## Про версії
+
+### v1.0
+
+**Реалізовано:**
+- REST API з 4 основними endpoints
+- PostgreSQL база з Prisma ORM
+- Email сповіщення про нові релізи
+- GitHub API інтеграція з rate limit handling
+- Docker & Docker Compose
+- Unit тести (12+ cases)
+- Swagger документація
+- GitHub Actions CI/CD
+- Deployed на Railway
+
+**Структура API (v1):**
+```
+POST   /api/subscribe      - Підписатися (без підтвердження email)
+POST   /api/unsubscribe    - Відписатися (за email + repository)
+GET    /api/subscriptions  - Список підписок користувача
+GET    /health             - Health check
+```
+
+### v2.0 (Планується)
+
+**Зміни для дотримання ТЗ:**
+- Додати email confirmation flow:
+  - `POST /api/subscribe` → відправляє confirmation email з токеном
+  - `GET /api/confirm/{token}` → підтверджує email через посилання
+  - `GET /api/unsubscribe/{token}` → відписує через посилання в email
+- Оновити БД: додати `confirmToken`, `unsubscribeToken`, `confirmedAt`
+- Комбінація двох методів: old endpoints (v1) + new endpoints (v2) для backward compatibility
+
+**Причина затримки:**
+Дедлайн завдання - v1 реалізована повністю з усіма 10 основними вимогами ТЗ. Email confirmation потребує додаткового часу для правильної реалізації, тому інтегрується в v2.
+---
+
 ## Основні можливості
 
 - **REST API** для управління підписками на релізи
