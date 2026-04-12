@@ -20,11 +20,11 @@ export const prisma = new PrismaClient({
 });
 
 // Middleware for logging
-prisma.$on('query', (e) => {
+prisma.$on('query', (e: any) => {
   logger.debug({ query: e.query, params: e.params }, 'Database query');
 });
 
-prisma.$on('error', (e) => {
+prisma.$on('error', (e: any) => {
   logger.error({ message: e.message }, 'Database error');
 });
 

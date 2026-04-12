@@ -160,7 +160,7 @@ export class SubscriptionService {
       return [];
     }
 
-    return user.subscriptions.map((sub) => ({
+    return user.subscriptions.map((sub: any) => ({
       id: sub.id,
       repository: sub.repository.fullName,
       createdAt: sub.createdAt,
