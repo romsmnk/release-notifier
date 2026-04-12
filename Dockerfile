@@ -8,8 +8,6 @@ RUN npm ci
 
 COPY . .
 
-RUN npm run db:migrate:deploy
-
 RUN npm run build
 
 EXPOSE 3000

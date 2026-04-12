@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { execSync } from 'node:child_process';
 import { logger } from '../config/logger';
 
 export const prisma = new PrismaClient({
@@ -36,10 +37,14 @@ process.on('SIGINT', async () => {
 
 export async function initializeDatabase() {
   try {
+    logger.info('Running database migrations...');
+    execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+    logger.info('Migrations completed');
+
     await prisma.$connect();
     logger.info('Database connected successfully');
   } catch (error) {
-    logger.error({ error }, 'Failed to connect to database');
+    logger.error({ error }, 'Failed to initialize database');
     throw error;
   }
 }
