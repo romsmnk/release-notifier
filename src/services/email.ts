@@ -16,11 +16,12 @@ export class EmailService {
       host: config.email.host,
       port: config.email.port,
       secure: config.email.port === 465,
+      requireTls: true,
       auth: {
         user: config.email.user,
         pass: config.email.password,
       },
-    });
+    } as any);
   }
 
   async sendEmail(options: EmailOptions): Promise<boolean> {
@@ -63,6 +64,28 @@ export class EmailService {
     return this.sendEmail({
       to: email,
       subject: `New Release: ${repositoryName} - ${releaseName}`,
+      html,
+    });
+  }
+
+  async sendConfirmationEmail(email: string, repositoryName: string, confirmUrl: string): Promise<boolean> {
+    const html = `
+      <h2>Confirm Your Subscription</h2>
+      <p>You have requested to subscribe to release notifications for <strong>${repositoryName}</strong>.</p>
+      <p>
+        <a href="${confirmUrl}" style="display: inline-block; padding: 10px 20px; background-color: #28a745; color: white; text-decoration: none; border-radius: 4px;">
+          Confirm Subscription
+        </a>
+      </p>
+      <p>Or copy this link: <code>${confirmUrl}</code></p>
+      <p>
+        <small>If you did not request this subscription, you can safely ignore this email.</small>
+      </p>
+    `;
+
+    return this.sendEmail({
+      to: email,
+      subject: `Confirm Subscription: ${repositoryName}`,
       html,
     });
   }
