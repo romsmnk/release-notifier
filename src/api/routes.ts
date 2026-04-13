@@ -4,7 +4,6 @@ import { apiKeyAuth } from '../middleware/apiKeyAuth';
 import {
   GetSubscriptionsRequestSchema,
   SubscribeRequestSchema,
-  UnsubscribeRequestSchema,
 } from '../schemas';
 import { SubscriptionService } from '../services/subscription';
 
@@ -14,18 +13,18 @@ export function setupRoutes(fastify: FastifyInstance, subscriptionService: Subsc
     {
       schema: {
         description: 'Subscribe to repository release notifications',
-        tags: ['Subscriptions'],
+        tags: ['subscription'],
         body: {
           type: 'object',
-          required: ['email', 'repository'],
+          required: ['email', 'repo'],
           properties: {
             email: { type: 'string', format: 'email' },
-            repository: { type: 'string', examples: ['golang/go'] },
+            repo: { type: 'string', examples: ['golang/go'] },
           },
         },
         response: {
-          201: {
-            description: 'Successfully subscribed',
+          200: {
+            description: 'Subscription successful. Confirmation email sent.',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
@@ -33,31 +32,16 @@ export function setupRoutes(fastify: FastifyInstance, subscriptionService: Subsc
             },
           },
           400: {
-            description: 'Invalid repository format',
+            description: 'Invalid input (e.g., invalid repo format)',
             type: 'object',
-            properties: {
-              error: { type: 'string' },
-              message: { type: 'string' },
-              statusCode: { type: 'number' },
-            },
           },
           404: {
-            description: 'Repository not found',
+            description: 'Repository not found on GitHub',
             type: 'object',
-            properties: {
-              error: { type: 'string' },
-              message: { type: 'string' },
-              statusCode: { type: 'number' },
-            },
           },
           409: {
-            description: 'Already subscribed',
+            description: 'Email already subscribed to this repository',
             type: 'object',
-            properties: {
-              error: { type: 'string' },
-              message: { type: 'string' },
-              statusCode: { type: 'number' },
-            },
           },
         },
       },
@@ -66,24 +50,42 @@ export function setupRoutes(fastify: FastifyInstance, subscriptionService: Subsc
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const validated = SubscribeRequestSchema.parse(request.body);
-        await subscriptionService.subscribeToRepository(validated.email, validated.repository);
-
-        logger.info(
-          { email: validated.email, repository: validated.repository },
-          'User subscribed'
+        const result = await subscriptionService.subscribeToRepository(
+          validated.email,
+          validated.repo
         );
 
-        reply.status(201).send({
-          success: true,
-          message: `Successfully subscribed ${validated.email} to ${validated.repository}`,
-        });
+        logger.info(
+          { email: validated.email, repo: validated.repo },
+          'Subscription created, confirmation email sent'
+        );
+
+        reply.status(200).send(result);
       } catch (error: any) {
         if (error.name === 'ZodError') {
-          reply.status(400).send({
+          return reply.code(400).type('application/json').send(JSON.stringify({
             error: 'ValidationError',
             message: error.errors[0].message,
             statusCode: 400,
-          });
+          }));
+        } else if (error.name === 'InvalidRepositoryFormatError') {
+          return reply.code(400).type('application/json').send(JSON.stringify({
+            error: 'ValidationError',
+            message: error.message,
+            statusCode: 400,
+          }));
+        } else if (error.name === 'RepositoryNotFoundError' || error.message?.includes('not found')) {
+          return reply.code(404).type('application/json').send(JSON.stringify({
+            error: 'NotFound',
+            message: error.message,
+            statusCode: 404,
+          }));
+        } else if (error.message?.includes('already subscribed') || error.message?.includes('already confirmed')) {
+          return reply.code(409).type('application/json').send(JSON.stringify({
+            error: 'Conflict',
+            message: error.message,
+            statusCode: 409,
+          }));
         } else {
           throw error;
         }
@@ -91,66 +93,116 @@ export function setupRoutes(fastify: FastifyInstance, subscriptionService: Subsc
     }
   );
 
-  fastify.post<{ Body: any }>(
-    '/api/unsubscribe',
+  fastify.get<{ Params: { token: string } }>(
+    '/api/confirm/:token',
     {
       schema: {
-        description: 'Unsubscribe from repository release notifications',
-        tags: ['Subscriptions'],
-        body: {
+        description: 'Confirms a subscription using the token sent in the confirmation email.',
+        tags: ['subscription'],
+        params: {
           type: 'object',
-          required: ['email', 'repository'],
           properties: {
-            email: { type: 'string', format: 'email' },
-            repository: { type: 'string', examples: ['golang/go'] },
+            token: { type: 'string', description: 'Confirmation token' },
           },
         },
         response: {
           200: {
-            description: 'Successfully unsubscribed',
+            description: 'Subscription confirmed successfully',
             type: 'object',
             properties: {
               success: { type: 'boolean' },
               message: { type: 'string' },
+              repository: { type: 'string' },
             },
           },
-          404: {
-            description: 'Subscription not found',
+          400: {
+            description: 'Invalid token',
             type: 'object',
-            properties: {
-              error: { type: 'string' },
-              message: { type: 'string' },
-              statusCode: { type: 'number' },
-            },
+          },
+          404: {
+            description: 'Token not found',
+            type: 'object',
           },
         },
       },
-      preHandler: apiKeyAuth,
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest<{ Params: { token: string } }>, reply: FastifyReply) => {
       try {
-        const validated = UnsubscribeRequestSchema.parse(request.body);
-        await subscriptionService.unsubscribeFromRepository(validated.email, validated.repository);
-
-        logger.info(
-          { email: validated.email, repository: validated.repository },
-          'User unsubscribed'
-        );
-
-        reply.send({
-          success: true,
-          message: `Successfully unsubscribed ${validated.email} from ${validated.repository}`,
-        });
+        const result = await subscriptionService.confirmSubscription(request.params.token);
+        reply.send(result);
       } catch (error: any) {
-        if (error.name === 'ZodError') {
-          reply.status(400).send({
-            error: 'ValidationError',
-            message: error.errors[0].message,
-            statusCode: 400,
+        logger.error({ token: request.params.token, error: error.message }, 'Confirmation failed');
+
+        if (error.name === 'TokenNotFoundError') {
+          return reply.code(404).send({
+            error: 'NotFound',
+            message: error.message,
+            statusCode: 404,
           });
-        } else {
-          throw error;
         }
+
+        reply.code(400).type('application/json').send(JSON.stringify({
+          error: 'BadRequest',
+          message: error.message,
+          statusCode: 400,
+        }));
+      }
+    }
+  );
+
+  fastify.get<{ Params: { token: string } }>(
+    '/api/unsubscribe/:token',
+    {
+      schema: {
+        description: 'Unsubscribes an email from release notifications using the token sent in emails.',
+        tags: ['subscription'],
+        params: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'Unsubscribe token' },
+          },
+        },
+        response: {
+          200: {
+            description: 'Unsubscribed successfully',
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              message: { type: 'string' },
+              repository: { type: 'string' },
+            },
+          },
+          400: {
+            description: 'Invalid token',
+            type: 'object',
+          },
+          404: {
+            description: 'Token not found',
+            type: 'object',
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Params: { token: string } }>, reply: FastifyReply) => {
+      try {
+        const result = await subscriptionService.unsubscribeByToken(request.params.token);
+        reply.send(result);
+      } catch (error: any) {
+        logger.error({ token: request.params.token, error: error.message }, 'Unsubscribe failed');
+
+        if (error.name === 'TokenNotFoundError') {
+          return reply.code(404).send({
+            error: 'NotFound',
+            message: error.message,
+            statusCode: 404,
+          });
+        }
+
+        reply.code(400).type('application/json').send(JSON.stringify({
+          error: 'BadRequest',
+          message: error.message,
+          statusCode: 400,
+        }));
       }
     }
   );
@@ -159,40 +211,35 @@ export function setupRoutes(fastify: FastifyInstance, subscriptionService: Subsc
     '/api/subscriptions',
     {
       schema: {
-        description: 'Get user subscriptions',
-        tags: ['Subscriptions'],
+        description: 'Get subscriptions for an email',
+        tags: ['subscription'],
         querystring: {
           type: 'object',
           required: ['email'],
           properties: {
-            email: { type: 'string', format: 'email' },
+            email: { type: 'string', format: 'email', description: 'Email address to look up subscriptions for' },
           },
         },
         response: {
           200: {
-            description: 'List of subscriptions',
+            description: 'Successful operation - list of subscriptions returned',
             type: 'array',
             items: {
               type: 'object',
               properties: {
-                id: { type: 'string' },
-                repository: { type: 'string' },
-                createdAt: { type: 'string' },
+                email: { type: 'string' },
+                repo: { type: 'string' },
+                confirmed: { type: 'boolean' },
+                last_seen_tag: { type: ['string', 'null'] },
               },
             },
           },
           400: {
-            description: 'Invalid email format',
+            description: 'Invalid email',
             type: 'object',
-            properties: {
-              error: { type: 'string' },
-              message: { type: 'string' },
-              statusCode: { type: 'number' },
-            },
           },
         },
       },
-      preHandler: apiKeyAuth,
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
@@ -200,16 +247,29 @@ export function setupRoutes(fastify: FastifyInstance, subscriptionService: Subsc
         const subscriptions = await subscriptionService.getUserSubscriptions(validated.email);
 
         reply.send(subscriptions);
-      } catch (error: any) {
-        if (error.name === 'ZodError') {
-          reply.status(400).send({
-            error: 'ValidationError',
-            message: error.errors[0].message,
-            statusCode: 400,
-          });
-        } else {
-          throw error;
+      } catch (error: unknown) {
+        const isZodError =
+          typeof error === 'object' &&
+          error !== null &&
+          (
+            ('name' in error && (error as { name?: string }).name ===  'ZodError') ||
+            ('constructor' in error &&
+              (error as { constructor?: { name?: string } }).constructor?.name === 'ZodError')
+          );
+
+        if (isZodError) {
+          const zodError = error as { errors?: Array<{ message?: string }>; message?: string };
+
+          return reply
+            .code(400)
+            .send({
+              error: 'ValidationError',
+              message: zodError.errors?.[0]?.message || zodError.message || 'Validation failed',
+              statusCode: 400,
+            });
         }
+
+        throw error;
       }
     }
   );

@@ -4,7 +4,16 @@ export async function errorHandler(error: Error, request: FastifyRequest, reply:
   let statusCode = 500;
   let message = 'Internal Server Error';
 
-  if (['RepositoryNotFoundError', 'not found'].includes(error.name)) {
+  if ((error as any).statusCode) {
+    statusCode = (error as any).statusCode;
+    message = error.message;
+  }
+
+  else if (error.name === 'ZodError' || error.constructor.name === 'ZodError') {
+    statusCode = 400;
+    message = (error as any).errors?.[0]?.message || error.message;
+  }
+  else if (['RepositoryNotFoundError', 'not found'].includes(error.name)) {
     statusCode = 404;
     message = error.message;
   } else if (['ValidationError', 'InvalidRepositoryFormatError'].includes(error.name)) {
@@ -18,9 +27,9 @@ export async function errorHandler(error: Error, request: FastifyRequest, reply:
     message = error.message;
   }
 
-  reply.status(statusCode).send({
-    error: error.name || 'Error',
+  reply.code(statusCode).type('application/json').send(JSON.stringify({
+    error: statusCode === 400 ? 'ValidationError' : (error.name || 'Error'),
     message,
     statusCode,
-  });
+  }));
 }

@@ -24,7 +24,10 @@ model Subscription {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   repositoryId  String
   repository    Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  isActive      Boolean  @default(true)
+  isActive      Boolean  @default(false)
+  confirmToken  String?  @unique
+  unsubscribeToken String? @unique
+  confirmedAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

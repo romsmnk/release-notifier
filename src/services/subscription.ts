@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { logger } from '../config/logger';
 import { prisma } from '../db/prisma';
 import { EmailService } from './email';
@@ -80,28 +81,50 @@ export class SubscriptionService {
       },
     });
 
+    const confirmToken = randomBytes(32).toString('hex');
+    const unsubscribeToken = randomBytes(32).toString('hex');
+
     if (existingSubscription) {
       if (existingSubscription.isActive) {
-        throw new Error('User is already subscribed to this repository');
+        throw new Error('Email already subscribed to this repository');
       }
 
       await prisma.subscription.update({
         where: { id: existingSubscription.id },
-        data: { isActive: true },
+        data: {
+          confirmToken,
+          unsubscribeToken,
+          isActive: false,
+          confirmedAt: null,
+        },
       });
-      logger.info({ email, fullName }, 'Subscription reactivated');
+      logger.info({ email, fullName }, 'Subscription tokens regenerated');
     } else {
       await prisma.subscription.create({
         data: {
           userId: user.id,
           repositoryId: dbRepository.id,
-          isActive: true,
+          isActive: false,
+          confirmToken,
+          unsubscribeToken,
         },
       });
-      logger.info({ email, fullName }, 'New subscription created');
+      logger.info({ email, fullName }, 'New subscription created with confirmation pending');
     }
 
-    return { success: true };
+    const confirmUrl = `${process.env.API_URL || 'http://localhost:3000'}/api/confirm/${confirmToken}`;
+    const emailSent = await this.emailService.sendConfirmationEmail(
+      email,
+      fullName,
+      confirmUrl
+    );
+
+    if (!emailSent) {
+      logger.error({ email, fullName, emailSent }, 'Failed to send confirmation email - subscription created but not confirmed');
+      throw new Error('Failed to send confirmation email. Please try again.');
+    }
+
+    return { success: true, message: 'Confirmation email sent' };
   }
 
   async unsubscribeFromRepository(email: string, fullName: string) {
@@ -143,6 +166,74 @@ export class SubscriptionService {
     return { success: true };
   }
 
+  async confirmSubscription(token: string) {
+    const subscription = await prisma.subscription.findUnique({
+      where: { confirmToken: token },
+      include: {
+        user: true,
+        repository: true,
+      },
+    });
+
+    if (!subscription) {
+      throw new Error('Invalid or expired confirmation token');
+    }
+
+    if (subscription.isActive) {
+      throw new Error('Subscription already confirmed');
+    }
+
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        isActive: true,
+        confirmedAt: new Date(),
+        confirmToken: null,
+      },
+    });
+
+    logger.info(
+      { email: subscription.user.email, repository: subscription.repository.fullName },
+      'Subscription confirmed'
+    );
+
+    return {
+      success: true,
+      message: `Successfully confirmed subscription to ${subscription.repository.fullName}`,
+      repository: subscription.repository.fullName,
+    };
+  }
+
+  async unsubscribeByToken(token: string) {
+    const subscription = await prisma.subscription.findUnique({
+      where: { unsubscribeToken: token },
+      include: {
+        user: true,
+        repository: true,
+      },
+    });
+
+    if (!subscription) {
+      throw new Error('Invalid or expired unsubscribe token');
+    }
+
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: { isActive: false },
+    });
+
+    logger.info(
+      { email: subscription.user.email, repository: subscription.repository.fullName },
+      'Unsubscribed via token'
+    );
+
+    return {
+      success: true,
+      message: `Successfully unsubscribed from ${subscription.repository.fullName}`,
+      repository: subscription.repository.fullName,
+    };
+  }
+
   async getUserSubscriptions(email: string) {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -161,9 +252,10 @@ export class SubscriptionService {
     }
 
     return user.subscriptions.map((sub: any) => ({
-      id: sub.id,
-      repository: sub.repository.fullName,
-      createdAt: sub.createdAt,
+      email: user.email,
+      repo: sub.repository.fullName,
+      confirmed: sub.confirmedAt !== null,
+      last_seen_tag: sub.repository.lastSeenTag,
     }));
   }
 

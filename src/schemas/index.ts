@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Request schemas
 export const SubscribeRequestSchema = z.object({
   email: z.string().email('Invalid email format'),
-  repository: z
+  repo: z
     .string()
     .regex(/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+$/, 'Repository format must be owner/repo'),
 });
@@ -14,7 +14,7 @@ export const UnsubscribeRequestSchema = z.object({
 });
 
 export const GetSubscriptionsRequestSchema = z.object({
-  email: z.string().email('Invalid email format'),
+  email: z.string().email('Invalid email'),
 });
 
 // Types
@@ -30,9 +30,10 @@ export const SubscriptionResponseSchema = z.object({
 
 export const SubscriptionsListSchema = z.array(
   z.object({
-    id: z.string(),
-    repository: z.string(),
-    createdAt: z.string(),
+    email: z.string(),
+    repo: z.string(),
+    confirmed: z.boolean(),
+    last_seen_tag: z.string().nullable(),
   })
 );
 
