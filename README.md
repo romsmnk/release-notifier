@@ -22,6 +22,8 @@ npm run db:migrate:dev
 npm run dev
 ```
 
+**API Client:** http://localhost:3000 - Веб-інтерфейс для взаємодії з API без curl
+
 ---
 
 ## API
