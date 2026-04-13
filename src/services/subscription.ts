@@ -120,7 +120,8 @@ export class SubscriptionService {
     );
 
     if (!emailSent) {
-      logger.warn({ email }, 'Failed to send confirmation email');
+      logger.error({ email, fullName, emailSent }, 'Failed to send confirmation email - subscription created but not confirmed');
+      throw new Error('Failed to send confirmation email. Please try again.');
     }
 
     return { success: true, message: 'Confirmation email sent' };

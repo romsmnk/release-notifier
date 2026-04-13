@@ -12,11 +12,20 @@ export class EmailService {
   private readonly transporter: nodemailer.Transporter;
 
   constructor() {
+    logger.info({
+      host: config.email.host,
+      port: config.email.port,
+      secure: config.email.port === 465,
+      userLength: config.email.user?.length || 0,
+      passLength: config.email.password?.length || 0,
+      from: config.email.from,
+    }, 'Initializing email transporter');
+
     this.transporter = nodemailer.createTransport({
       host: config.email.host,
       port: config.email.port,
       secure: config.email.port === 465,
-      requireTls: true,
+      requireTls: config.email.port === 587,
       auth: {
         user: config.email.user,
         pass: config.email.password,
@@ -33,10 +42,17 @@ export class EmailService {
         html: options.html,
       });
 
-      logger.info({ to: options.to }, 'Email sent successfully');
+      logger.info({ to: options.to, subject: options.subject }, 'Email sent successfully');
       return true;
-    } catch (error) {
-      logger.error({ error, to: options.to }, 'Failed to send email');
+    } catch (error: any) {
+      logger.error({
+        to: options.to,
+        subject: options.subject,
+        errorMessage: error?.message,
+        errorCode: error?.code,
+        errorCommand: error?.command,
+        fullError: error,
+      }, 'Failed to send email');
       return false;
     }
   }
