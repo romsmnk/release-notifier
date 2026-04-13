@@ -1,4 +1,3 @@
-import nodemailer from 'nodemailer';
 import { config } from '../config';
 import { logger } from '../config/logger';
 
@@ -9,40 +8,60 @@ export interface EmailOptions {
 }
 
 export class EmailService {
-  private readonly transporter: nodemailer.Transporter;
+  private readonly apiToken: string;
+  private readonly from: string;
+  private readonly apiUrl = 'https://send.api.mailtrap.io/api/send';
 
   constructor() {
-    logger.info({
-      host: config.email.host,
-      port: config.email.port,
-      secure: config.email.port === 465,
-      userLength: config.email.user?.length || 0,
-      passLength: config.email.password?.length || 0,
-      from: config.email.from,
-    }, 'Initializing email transporter');
+    this.apiToken = config.email.password || '';
+    this.from = config.email.from;
 
-    this.transporter = nodemailer.createTransport({
-      host: config.email.host,
-      port: config.email.port,
-      secure: config.email.port === 465,
-      requireTls: config.email.port === 587,
-      auth: {
-        user: config.email.user,
-        pass: config.email.password,
-      },
-    } as any);
+    logger.info({
+      apiUrl: this.apiUrl,
+      from: this.from,
+      tokenLength: this.apiToken?.length || 0,
+    }, 'Initializing Mailtrap HTTP API email service');
   }
 
   async sendEmail(options: EmailOptions): Promise<boolean> {
     try {
-      await this.transporter.sendMail({
-        from: config.email.from,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: {
+            email: this.from,
+            name: 'Release Notifier',
+          },
+          to: [
+            {
+              email: options.to,
+            },
+          ],
+          subject: options.subject,
+          html: options.html,
+        }),
       });
 
-      logger.info({ to: options.to, subject: options.subject }, 'Email sent successfully');
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error({
+          to: options.to,
+          subject: options.subject,
+          statusCode: response.status,
+          statusText: response.statusText,
+          errorBody: errorText,
+        }, 'Failed to send email via Mailtrap API');
+        return false;
+      }
+
+      logger.info({
+        to: options.to,
+        subject: options.subject,
+      }, 'Email sent successfully via Mailtrap API');
       return true;
     } catch (error: any) {
       logger.error({
@@ -50,9 +69,8 @@ export class EmailService {
         subject: options.subject,
         errorMessage: error?.message,
         errorCode: error?.code,
-        errorCommand: error?.command,
         fullError: error,
-      }, 'Failed to send email');
+      }, 'Failed to send email - network error');
       return false;
     }
   }
@@ -108,11 +126,45 @@ export class EmailService {
 
   async verifyConnection(): Promise<boolean> {
     try {
-      await this.transporter.verify();
-      logger.info('Email service verified successfully');
+      const testEmail = 'delivery@mailtrap.io';
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: {
+            email: this.from,
+            name: 'Release Notifier',
+          },
+          to: [
+            {
+              email: testEmail,
+            },
+          ],
+          subject: 'Email Service Verification',
+          html: '<p>This is a test email to verify the email service is working.</p>',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error({
+          statusCode: response.status,
+          statusText: response.statusText,
+          errorBody: errorText,
+        }, 'Email service verification failed');
+        return false;
+      }
+
+      logger.info('Email service verified successfully via Mailtrap API');
       return true;
-    } catch (error) {
-      logger.error({ error }, 'Email service verification failed');
+    } catch (error: any) {
+      logger.error({
+        errorMessage: error?.message,
+        errorCode: error?.code,
+      }, 'Email service verification error');
       return false;
     }
   }

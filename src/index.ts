@@ -20,7 +20,10 @@ async function main() {
     const emailService = new EmailService();
     const subscriptionService = new SubscriptionService(githubClient, emailService);
 
-    await emailService.verifyConnection();
+    const emailVerified = await emailService.verifyConnection();
+    if (!emailVerified) {
+      logger.warn('Email service verification failed - emails may not be sent');
+    }
 
     const fastify = Fastify({
       logger: false,
