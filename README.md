@@ -22,6 +22,9 @@ npm run db:migrate:dev
 npm run dev
 ```
 
+**Веб-інтерфейс:** http://localhost:3000/index.gtml - Статична сторінка для взаємодії з API (без curl)
+**Production UI:** https://release-notifier-production-04c1.up.railway.app/index.gtml
+
 ---
 
 ## API
@@ -136,6 +139,7 @@ DATABASE_URL=postgresql://...
 GITHUB_API_TOKEN=ghp_...
 EMAIL_PASSWORD=YOUR_MAILTRAP_API_TOKEN
 EMAIL_FROM=noreply@example.com
+API_URL= #URL для email посилань (confirmation, unsubscribe)
 ```
 
 ---

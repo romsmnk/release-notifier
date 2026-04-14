@@ -1,6 +1,8 @@
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
+import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
+import path from 'path';
 import { setupRoutes } from './api/routes';
 import { config } from './config';
 import { logger } from './config/logger';
@@ -52,6 +54,11 @@ async function main() {
 
     await fastify.register(fastifySwaggerUI, {
       routePrefix: '/docs',
+    });
+
+    await fastify.register(fastifyStatic, {
+      root: path.join(__dirname, '../public'),
+      prefix: '/',
     });
 
     fastify.setErrorHandler(errorHandler);
